@@ -14,8 +14,9 @@
 #include <map>
 #include <vector>
 
-#include <boost/serialization/serialization.hpp>
-#include <boost/serialization/map.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/serialization/vector.hpp>
 
 namespace DBoW2 {
 
