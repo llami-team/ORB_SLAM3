@@ -1,0 +1,39 @@
+CompileFlags:
+  Add: 
+    - -std=c++14
+    - -Wall
+    - -O3
+    - -march=native
+    - -DCOMPILEDWITHC11
+    - -DCOMPILEDWITHC14
+  CompilationDatabase: build_macos
+
+Index:
+  Background: Build
+  StandardLibrary: Yes
+
+Diagnostics:
+  ClangTidy:
+    Add: 
+      - modernize-*
+      - performance-*
+      - bugprone-*
+    Remove:
+      - modernize-use-trailing-return-type
+      - modernize-deprecated-headers
+    CheckOptions:
+      readability-identifier-naming.VariableCase: camelBack
+      readability-identifier-naming.FunctionCase: camelBack
+      readability-identifier-naming.ClassCase: CamelCase
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  Designators: Yes
+
+Hover:
+  ShowAKA: Yes
+
+Completion:
+  AllScopes: Yes

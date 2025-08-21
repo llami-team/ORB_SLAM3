@@ -5,6 +5,8 @@ IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE Release)
 ENDIF()
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 MESSAGE("Build type: " ${CMAKE_BUILD_TYPE})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wall   -O3")
@@ -140,6 +142,9 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
 add_executable(motion-host
-        motion-host/main.cc)
+   motion-host/main.cc
+   motion-host/base64.cc
+   motion-host/socket.c
+)
 target_link_libraries(motion-host ${PROJECT_NAME})
 
