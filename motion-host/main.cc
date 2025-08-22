@@ -20,7 +20,6 @@
 ORB_SLAM3::System *slam = nullptr;
 cv::VideoCapture *cap = nullptr;
 
-bool shouldStop = false;
 std::vector<ORB_SLAM3::IMU::Point> imuMeasurements;
 
 // Forward declarations for cleanup functions
@@ -59,7 +58,7 @@ void handle_socket_message(char* buffer, int length) {
   std::string message(buffer);
   
   if (message == "exit") {
-    shouldStop = true;
+    g_should_stop = 1;
     return;
   }
   
@@ -106,28 +105,28 @@ int main(int argc, char **argv) {
   
   // Start accepting connections in a separate thread
   std::thread accept_thread([&]() {
-    while (!shouldStop && g_should_stop == 0) {
+    while (g_should_stop == 0) {
       int client = accept_connection();
-      if (client < 0) {
-        std::cerr << "Failed to accept connection or timeout occurred\n";
-        // Sleep a bit before trying again
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+      if (client == -2) {
+        std::cerr << "Accept error occurred\n";
       }
     }
   });
   
+  ORB_SLAM3::Verbose::SetTh(ORB_SLAM3::Verbose::VERBOSITY_VERY_VERBOSE);
   slam = new ORB_SLAM3::System(argv[1], argv[2], ORB_SLAM3::System::MONOCULAR,
                                false);
   cap = new cv::VideoCapture(argv[3]);
 
   signal(SIGTERM, sigterm_handler);
+  signal(SIGINT, sigterm_handler);
   // imuMeasurements is now declared globally
 
   size_t frameId = 0;
   timespec ts;
 
   std::thread slamThread([&]() {
-    while (!shouldStop && g_should_stop == 0) {
+    while (g_should_stop == 0) {
       if (!cap->isOpened()) {
         std::cout << "Error opening video stream or file" << "\n";
         break;
@@ -166,12 +165,12 @@ int main(int argc, char **argv) {
   
   // Simple loop to check for exit command from stdin (keeping this for convenience)
   std::string line;
-  while (!shouldStop && g_should_stop == 0) {
+  while (g_should_stop == 0) {
     // Non-blocking check for stdin input
     if (std::cin.rdbuf()->in_avail()) { // Check if there's input available
       std::getline(std::cin, line);
       if (line == "exit") {
-        shouldStop = true;
+        g_should_stop = 1;
         break;
       }
     }
@@ -180,15 +179,14 @@ int main(int argc, char **argv) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
-  shouldStop = true;
+  g_should_stop = 1;
   slamThread.join();
-  accept_thread.join();
   
-  // Clean up resources
-  cleanup_resources();
-  
-  // Clean up socket resources
   socket_close();
+  accept_thread.join();
+
+  slam->Shutdown();
+  cleanup_resources();
 
   return 0;
 }

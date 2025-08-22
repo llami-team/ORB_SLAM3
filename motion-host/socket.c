@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/select.h>
 
 
 #ifdef __cplusplus
@@ -50,13 +51,31 @@ int accept_connection() {
   struct sockaddr_in client_address;
   socklen_t client_address_len = sizeof(client_address);
 
+  // Wait for incoming connection with a short timeout so we can react to shutdown
+  fd_set rfds;
+  FD_ZERO(&rfds);
+  FD_SET(server_socket, &rfds);
+
+  struct timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = 500000; // 500 ms
+
+  int sel = select(server_socket + 1, &rfds, NULL, NULL, &tv);
+  if (sel == 0) {
+    // Timeout; let caller loop/check stop flag
+    return -1;
+  } else if (sel < 0) {
+    // Error
+    return -2;
+  }
+
   struct timeval timeout;
   timeout.tv_sec = 5;
   timeout.tv_usec = 0;
 
   int client = accept(server_socket, (struct sockaddr *)&client_address, &client_address_len);
   if (client < 0) {
-    return -1;
+    return -2;
   }
 
   if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
@@ -159,6 +178,8 @@ void socket_close() {
   }
   
   if (server_socket >= 0) {
+    // Gracefully shutdown to interrupt any blocking accept()
+    shutdown(server_socket, SHUT_RDWR);
     close(server_socket);
     server_socket = -1;
   }
