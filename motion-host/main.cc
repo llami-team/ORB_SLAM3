@@ -158,9 +158,6 @@ int main(int argc, char **argv) {
       
       // Send pose data to connected clients
       send_message(poseMessage.c_str(), static_cast<int>(poseMessage.length()));
-      
-      // Also print to stdout for debugging
-      printf("%s\n", poseMessage.c_str());
     }
   });
 
