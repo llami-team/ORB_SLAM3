@@ -1,17 +1,17 @@
+#include <csignal>
 #include <cstdio>
 #include <ctime>
 #include <iostream>
 #include <string>
 #include <thread>
-#include <csignal>
 
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
 
-#include "socket.h"
 #include "base64.h"
+#include "socket.h"
 
 #include <opencv2/core/core.hpp>
 
@@ -31,12 +31,13 @@ volatile sig_atomic_t g_should_stop = 0;
 extern "C" void sigterm_handler(int signum) {
   // Use sig_atomic_t which is safe for signal handlers
   g_should_stop = 1;
-  
+
   // Don't call socket_close from signal handler as it might not be async-safe
   // We'll handle cleanup in the main thread
 }
 
-// This function will be called from the main thread to safely clean up resources
+// This function will be called from the main thread to safely clean up
+// resources
 void cleanup_resources() {
   if (slam) {
     delete slam;
@@ -50,18 +51,18 @@ void cleanup_resources() {
 }
 
 // Socket message handler callback
-void handle_socket_message(char* buffer, int length) {
+void handle_socket_message(char *buffer, int length) {
   // Null-terminate the buffer to ensure it's a valid string
   buffer[length] = '\0';
-  
+
   // Process socket messages similar to stdin messages
   std::string message(buffer);
-  
+
   if (message == "exit") {
     g_should_stop = 1;
     return;
   }
-  
+
   // imu message format: imu <base64>
   // (acc_x, acc_y, acc_z, ang_vel_x, ang_vel_y, ang_vel_z, timestamp) in fp32
   if (message.substr(0, 3) == "imu") {
@@ -87,10 +88,11 @@ void handle_socket_message(char* buffer, int length) {
 
 int main(int argc, char **argv) {
   if (argc < 5) {
-    std::cerr << "Usage: " << argv[0] << " path_to_vocabulary path_to_settings camera_rtsp_url port\n";
+    std::cerr << "Usage: " << argv[0]
+              << " path_to_vocabulary path_to_settings camera_rtsp_url port\n";
     return 1;
   }
-  
+
   // Initialize socket server
   int port = std::stoi(argv[4]);
   int socket_fd = socket_create(port);
@@ -99,10 +101,10 @@ int main(int argc, char **argv) {
     return 1;
   }
   std::cout << "Socket server started on port " << port << "\n";
-  
+
   // Set message listener
   set_message_listener(handle_socket_message);
-  
+
   // Start accepting connections in a separate thread
   std::thread accept_thread([&]() {
     while (g_should_stop == 0) {
@@ -112,10 +114,10 @@ int main(int argc, char **argv) {
       }
     }
   });
-  
+
   ORB_SLAM3::Verbose::SetTh(ORB_SLAM3::Verbose::VERBOSITY_VERY_VERBOSE);
-  slam = new ORB_SLAM3::System(argv[1], argv[2], ORB_SLAM3::System::MONOCULAR,
-                               false);
+  slam = new ORB_SLAM3::System(argv[1], argv[2],
+                               ORB_SLAM3::System::IMU_MONOCULAR, false);
   cap = new cv::VideoCapture(argv[3]);
 
   signal(SIGTERM, sigterm_handler);
@@ -148,22 +150,24 @@ int main(int argc, char **argv) {
 
       Sophus::SE3f pose =
           slam->TrackMonocular(image, timestamp, imuMeasurements);
-
       imuMeasurements.clear();
+
       std::vector<uint8_t> poseData(sizeof(float) * 16);
 
       memcpy(poseData.data(), pose.matrix().data(), sizeof(float) * 16);
       std::string poseMessage = "pose " + base64_encode(poseData);
-      
+
       // Send pose data to connected clients
       send_message(poseMessage.c_str(), static_cast<int>(poseMessage.length()));
     }
   });
 
   // Wait for signal to stop
-  std::cout << "System running. Enter 'exit' in terminal or send 'exit' via socket to stop.\n";
-  
-  // Simple loop to check for exit command from stdin (keeping this for convenience)
+  std::cout << "System running. Enter 'exit' in terminal or send 'exit' via "
+               "socket to stop.\n";
+
+  // Simple loop to check for exit command from stdin (keeping this for
+  // convenience)
   std::string line;
   while (g_should_stop == 0) {
     // Non-blocking check for stdin input
@@ -174,14 +178,14 @@ int main(int argc, char **argv) {
         break;
       }
     }
-    
+
     // Sleep to avoid busy waiting
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
   g_should_stop = 1;
   slamThread.join();
-  
+
   socket_close();
   accept_thread.join();
 
