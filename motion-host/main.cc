@@ -1,6 +1,7 @@
 #include <csignal>
 #include <cstdio>
 #include <ctime>
+
 #include <iostream>
 #include <string>
 #include <thread>
@@ -10,12 +11,13 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
-#include "base64.h"
-#include "socket.h"
-
 #include <opencv2/core/core.hpp>
+#include <opencv2/videoio.hpp>
 
 #include <System.h>
+
+#include "base64.h"
+#include "socket.h"
 
 ORB_SLAM3::System *slam = nullptr;
 cv::VideoCapture *cap = nullptr;
@@ -89,7 +91,8 @@ void handle_socket_message(char *buffer, int length) {
 int main(int argc, char **argv) {
   if (argc < 5) {
     std::cerr << "Usage: " << argv[0]
-              << " path_to_vocabulary path_to_settings camera_rtsp_url port\n";
+              << " path_to_vocabulary path_to_settings "
+                 "camera_device_index_or_path port\n";
     return 1;
   }
 
@@ -116,44 +119,61 @@ int main(int argc, char **argv) {
   });
 
   ORB_SLAM3::Verbose::SetTh(ORB_SLAM3::Verbose::VERBOSITY_VERY_VERBOSE);
-  slam = new ORB_SLAM3::System(argv[1], argv[2],
-                               ORB_SLAM3::System::IMU_MONOCULAR, false);
-  cap = new cv::VideoCapture(argv[3]);
+  slam = new ORB_SLAM3::System(argv[1], argv[2], ORB_SLAM3::System::MONOCULAR,
+                               false);
+
+  std::string camArg = argv[3];
+  cv::VideoCapture cap(camArg);
+
+  // Query fps; avoid relying on POS_MSEC for timing
+  auto fps = cap.get(cv::CAP_PROP_FPS);
+  std::cout << "Camera FPS (reported): " << fps << "\n";
 
   signal(SIGTERM, sigterm_handler);
   signal(SIGINT, sigterm_handler);
-  // imuMeasurements is now declared globally
 
   size_t frameId = 0;
   timespec ts;
 
   std::thread slamThread([&]() {
     while (g_should_stop == 0) {
-      if (!cap->isOpened()) {
+      if (!cap.isOpened()) {
         std::cout << "Error opening video stream or file" << "\n";
         break;
       }
 
       cv::Mat image;
-      cap->read(image);
+
+      if (!cap.grab()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        continue;
+      }
+
+      timespec grab_ts{};
+      clock_gettime(CLOCK_REALTIME, &grab_ts);
+
+      if (!cap.retrieve(image)) {
+        // retrieval failed, skip this frame
+        continue;
+      }
+
+      double timestamp = 0.0;
+      int64_t ts_ll = (int64_t)grab_ts.tv_sec * 1000000000LL + grab_ts.tv_nsec;
+      timestamp = (double)ts_ll * 1e-9;
+
       if (image.empty()) {
         break;
       }
-
-      clock_gettime(CLOCK_REALTIME, &ts);
-      int64_t timestamp_ll = ts.tv_sec * 1000000000LL + ts.tv_nsec;
-      double timestamp = (double)timestamp_ll * 1e-9;
 
       if (frameId++ % 3 != 0) { // restrict frame to 10fps
         continue;
       }
 
-      Sophus::SE3f pose =
-          slam->TrackMonocular(image, timestamp, imuMeasurements);
-      imuMeasurements.clear();
+      // If needed, you can also sort or otherwise pre-process imuBatch here.
+
+      Sophus::SE3f pose = slam->TrackMonocular(image, timestamp);
 
       std::vector<uint8_t> poseData(sizeof(float) * 16);
-
       memcpy(poseData.data(), pose.matrix().data(), sizeof(float) * 16);
       std::string poseMessage = "pose " + base64_encode(poseData);
 
