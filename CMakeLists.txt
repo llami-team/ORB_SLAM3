@@ -135,16 +135,3 @@ if(realsense2_FOUND)
     ${realsense2_LIBRARY}
     )
 endif()
-
-
-# Build examples
-
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
-
-add_executable(motion-host
-   motion-host/main.cc
-   motion-host/base64.cc
-   motion-host/socket.c
-)
-target_link_libraries(motion-host ${PROJECT_NAME})
-
